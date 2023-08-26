@@ -1,0 +1,132 @@
+Scenarios: Checking how user can swicth to a role using AWS CLI and configuring the temporary credentials of the role in Config file.
+
+Case1 : Same Account(Normal User Assuming a Role in the Same Account)
+
+Step 1: From the prod account user is created and have given Inlinepolicy with iam limited permission (IamRequiredPermissionForUser)
+              iam:ListAccessKeys
+               iam:CreateAccessKey
+               iam:UpdateAccessKey
+               iam:DeleteAccessKey
+               iam:PutUserPolicy
+               iam:ListUsers
+               iam:ListPolicies
+               iam:ListUserPolicies
+Step 2: Now User will  login to the aws console and create Acess keys.
+       Configuring Users Access Keys
+       aws configure --profile Username
+Step 3: Now user will configure Acess keys  in Aws CLI command prompt using aws configure --profile Username
+Step 4: Create a role with any permission(S3FullAccess) that user want to access in the prod account
+Step 5: Create a assume role permission in the User Account for the user to assume the role.
+Step 6: The user will switch to the particular role in the prod account and can access the service
+
+Process
+aws iam create-role --role-name YourRoleName --assume-role-policy-document file://trust-policy.json --profile ProfileName
+  aws iam create-role --role-name ProdS3AccessByUserRole --assume-role-policy-document file://trust-policy.json --profile ProdRootUser
+  trust-policy.json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::059152614518:user/YourUserName"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+
+
+aws iam attach-role-policy --role-name YourRoleName --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
+  aws iam attach-role-policy --role-name ProdS3AccessByUserRole --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess --profile ProdRootUser
+
+aws iam put-user-policy --user-name YourUserName --policy-name YourPolicyName --policy-document file://assume-role-policy.json
+   aws iam put-user-policy --user-name iamuser --policy-name AssumeRoleByUser --policy-document file://assume-role-policy.json --profile iamuser
+   assume-role-policy.json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowAssumeRole",
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": "arn:aws:iam::ACCOUNT_ID:role/ROLE_NAME"
+    }
+  ]
+}
+aws sts assume-role --role-arn ROLE_ARN --role-session-name SESSION_NAME
+   aws sts assume-role --role-arn arn:aws:iam::059152614518:role/ProdS3AccessByUserRole --role-session-name ProdS3AcesssFromCLI
+
+configuring in "Config" file
+[profile assumeroleByUserInSameAccount]
+role_arn = arn:aws:iam::059152614518:role/ProdS3AccessByUserRole
+source_profile = iamuser
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Case2: Cross Account(Normal User Assuming a Role in the Different Account)
+Step 1: From the prod account user is created and have given Inlinepolicy with iam limited permission (IamRequiredPermissionForUser)
+               iam:ListAccessKeys
+               iam:CreateAccessKey
+               iam:UpdateAccessKey
+               iam:DeleteAccessKey
+               iam:PutUserPolicy
+               iam:ListUsers
+               iam:ListPolicies
+               iam:ListUserPolicies
+Step 2: Now User will  login to the aws console and create Acess keys
+Step 3: Now user will configure Acess keys  in Aws CLI command prompt using aws configure --profile Username
+Step 4: Create a role with permission(S3FullAccess) in the Dev account for the User in prod Account
+Step 5: Create a assume role permission in the User Account for the user to assume the role.
+Step 6: The user will switch to the particular role in the Dev account and can access the service
+
+Process
+ aws iam create-role --role-name DevS3AccessByUserInProdRole --assume-role-policy-document file://trust-policy1.json --profile DevRootUser
+trust-policy1.json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::059152614518:user/iamuser"
+      },
+      "Action": "sts:AssumeRole"
+    } 
+  ]
+}
+aws iam attach-role-policy --role-name DevS3AccessByUserInProdRole  --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess --profile DevRootUser
+
+aws iam put-user-policy --user-name iamuser --policy-name sts-assume-role-user --policy-document file://assume-role-policySec.json --profile iamuser
+assume-role-policySec.json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowAssumeRole",
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": "arn:aws:iam::682987034440/DevS3AccessByUserInProdRole "
+    }
+  ]
+}
+aws sts assume-role --role-arn arn:aws:iam::682987034440:role/DevS3AccessByUserInProdRole --role-session-name DevS3AcesssFromCLI  --profile iamuser
+
+configuring in "Config" file
+[profile assumeroleByUserInCrossAccount]
+role_arn = arn:aws:iam::682987034440:role/DevS3AccessByUserInProdRole 
+source_profile = iamuser
+
+Calling particular profile 
+aws sts get-caller-identity --profile iamuser
+aws sts get-caller-identity --profile ProdRootUser
+aws sts get-caller-identity --profile DevRootUser
+aws sts get-caller-identity --profile assumeroleByUserInSameAccount
+aws sts get-caller-identity --profile assumeroleByUserInCrossAccount
+
+configuring users and root 
+aws configure --profile iamuser
+aws configure --profile ProdRootUser
+aws configure --profile DevRootUser
+
+Checking Permission
+aws s3 ls --profile assumeroleByUserInCrossAccount
